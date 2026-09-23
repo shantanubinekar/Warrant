@@ -39,15 +39,30 @@ app.add_middleware(
 app.include_router(analysis_router, prefix="/api")
 
 
-@app.get("/")
-def root():
-    return {
-        "system": "Warrant — Evidence-Aware Clinical Decision Support",
-        "version": "0.1.0",
-        "principle": "LLM proposes/structures/explains. Deterministic logic verifies/decides.",
-    }
+# Mount routes
+app.include_router(analysis_router, prefix="/api")
 
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# Serve the built frontend (frontend/dist) if present — this lets the
+# same service host both the API and the UI on one origin, which is the
+# simplest setup for free single-service hosting (e.g. Render).
+# In local dev, run the Vite dev server separately instead (npm run dev);
+# this mount is a no-op until `npm run build` has been run.
+_frontend_dist = os.path.join(os.path.dirname(__file__), "frontend", "dist")
+if os.path.isdir(_frontend_dist):
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/", StaticFiles(directory=_frontend_dist, html=True), name="frontend")
+else:
+    @app.get("/")
+    def root():
+        return {
+            "system": "Warrant — Evidence-Aware Clinical Decision Support",
+            "version": "0.1.0",
+            "principle": "LLM proposes/structures/explains. Deterministic logic verifies/decides.",
+            "note": "frontend/dist not found — run `npm run build` in frontend/ to serve the UI here.",
+        }
