@@ -117,6 +117,68 @@ class LLMClient:
             logger.error(f"LLM extraction failed: {e}\n{traceback.format_exc()}")
             return None
 
+    def answer_case_question(self, question: str, case_context_json: str) -> str:
+        """Answer a free-form follow-up question about an already-analyzed case.
+
+        This is separate from the deterministic reasoning engine — it's an
+        honest, best-effort LLM answer, grounded ONLY in the structured
+        findings for this one case. If the question reaches outside what
+        that data can support (e.g. asking about an unrelated condition
+        when this case only has cardiac/AMI evidence), the model is
+        instructed to say so plainly rather than speculate.
+
+        Args:
+            question: The user's free-form question.
+            case_context_json: JSON string of this case's reasoning result
+                (supported/unsupported claims, condition checks, etc.) —
+                the only source of truth the model is allowed to use.
+
+        Returns:
+            A plain-text answer.
+
+        Raises:
+            RuntimeError: If LLM is unavailable.
+        """
+        if not self.available:
+            raise RuntimeError("LLM not available for case Q&A")
+
+        system_prompt = (
+            "You answer follow-up questions about ONE specific AMI (heart "
+            "attack) evidence-review case that Warrant's deterministic "
+            "reasoning engine already processed. Below is that case's "
+            "authoritative structured findings in JSON — it is your ONLY "
+            "source of truth about this patient. You were not given the "
+            "raw chart, imaging, or any other data.\n\n"
+            "Rules:\n"
+            "1. If the question can be answered from this data (interpreting "
+            "a claim, explaining why something is missing/unsupported, "
+            "clarifying a finding), answer directly using only this data.\n"
+            "2. If the question is about something this data has nothing to "
+            "do with (e.g. asking about cancer, an unrelated organ system, or "
+            "any diagnosis this evidence set was never designed to assess), "
+            "say so plainly and honestly: state clearly that this case's "
+            "evidence cannot answer that, and briefly note what kind of "
+            "different evidence (e.g. imaging, biopsy, specialist workup) "
+            "would actually be needed — do not imply a connection that isn't "
+            "in the data, and do not guess.\n"
+            "3. Never state a definitive diagnosis. This is decision support, "
+            "not a treating clinician.\n"
+            "4. Be concise and honest. Plain text, no markdown.\n\n"
+            f"Case findings (JSON):\n{case_context_json}"
+        )
+
+        response = self.client.chat.completions.create(
+            model=self.model_name,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": question},
+            ],
+            temperature=0.3,
+        )
+
+        raw_text = (response.choices[0].message.content or "").strip()
+        return self._strip_markdown(raw_text)
+
     def generate_explanation(
         self,
         reasoning_result: ReasoningResult,

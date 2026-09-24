@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Plus, AlertTriangle, X } from 'lucide-react';
 import {
   ScenarioSummary,
   AnalysisResponse,
@@ -7,6 +8,7 @@ import {
   fetchScenarios,
   analyzeScenario,
   uploadClinicalText,
+  uploadClinicalFile,
 } from './api/client';
 import { ScenarioList } from './components/ScenarioList';
 import { AnalysisView } from './components/AnalysisView';
@@ -74,54 +76,75 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleFileUpload = async (file: File, description?: string) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const result = await uploadClinicalFile(file, description);
+      setSelectedScenarioId(null);
+      setCurrentScenario({
+        id: 0,
+        title: description || `Uploaded File: ${file.name}`,
+        description: `Extracted from uploaded file "${file.name}"`,
+        target_state: result.analysis.reasoning_result.state,
+      });
+      setAnalysis(result.analysis);
+    } catch (err: any) {
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-slate-100">
-      {/* Top Application Bar */}
-      <header className="bg-white border-b border-slate-200 px-6 py-3.5 flex items-center justify-between shrink-0 shadow-xs z-10">
+    <div className="flex flex-col h-screen overflow-hidden bg-paper">
+      {/* Instrument strip */}
+      <header className="bg-ink text-paper px-6 py-3 flex items-center justify-between shrink-0 z-10">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-blue-600 text-white font-black text-lg flex items-center justify-center shadow-xs">
+          <div className="w-8 h-8 rounded border border-paper/20 flex items-center justify-center font-mono font-bold text-sm text-paper">
             W
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <span className="font-extrabold text-slate-900 tracking-tight text-base">
+            <div className="flex items-baseline gap-2">
+              <span className="font-mono font-semibold tracking-tight text-sm text-paper">
                 WARRANT
               </span>
-              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-                AMI / Cardiac CDS
+              <span className="text-[10px] font-mono text-paper/50">
+                AMI · Cardiac CDS
               </span>
             </div>
-            <p className="text-[11px] text-slate-500 font-medium">
-              Evidence-Aware Clinical Decision Support System
+            <p className="text-[11px] text-paper/60 leading-none mt-0.5">
+              Evidence-aware clinical decision support
             </p>
           </div>
         </div>
 
-        {/* Principle Banner */}
-        <div className="hidden lg:flex items-center gap-2 text-xs bg-slate-50 border border-slate-200 px-3.5 py-1.5 rounded-lg text-slate-600 font-mono">
-          <span className="text-blue-600 font-bold">CORE PRINCIPLE:</span>
-          <span>LLM proposes/structures/explains. Deterministic logic verifies/decides.</span>
+        {/* Principle strip */}
+        <div className="hidden lg:flex items-center gap-2 text-[11px] font-mono text-paper/70">
+          <span className="text-signal-soft/90 font-semibold">PRINCIPLE</span>
+          <span className="text-paper/30">/</span>
+          <span>LLM proposes, structures, explains. Deterministic logic verifies, decides.</span>
         </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setIsUploadOpen(true)}
-            className="text-xs font-semibold px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-xs flex items-center gap-1.5"
-          >
-            <span>+</span> Upload Case
-          </button>
-        </div>
+        <button
+          onClick={() => setIsUploadOpen(true)}
+          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 bg-signal hover:bg-signal-dark text-white rounded transition-colors"
+        >
+          <Plus size={14} /> Upload case
+        </button>
       </header>
 
       {/* Error alert */}
       {error && (
-        <div className="bg-rose-50 border-b border-rose-200 px-6 py-2.5 text-xs text-rose-800 flex items-center justify-between shrink-0">
-          <span className="font-medium">⚠️ {error}</span>
+        <div className="bg-state-critical-soft border-b border-state-critical-line px-6 py-2.5 text-xs text-state-critical flex items-center justify-between shrink-0">
+          <span className="font-medium flex items-center gap-1.5">
+            <AlertTriangle size={14} /> {error}
+          </span>
           <button
             onClick={() => setError(null)}
-            className="text-rose-500 hover:text-rose-800 font-bold ml-4"
+            className="text-state-critical/70 hover:text-state-critical"
           >
-            ✕
+            <X size={14} />
           </button>
         </div>
       )}
@@ -153,6 +176,7 @@ export const App: React.FC = () => {
         isOpen={isUploadOpen}
         onClose={() => setIsUploadOpen(false)}
         onUpload={handleCustomUpload}
+        onUploadFile={handleFileUpload}
         isLoading={isLoading}
       />
     </div>

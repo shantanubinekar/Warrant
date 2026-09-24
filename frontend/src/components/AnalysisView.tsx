@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Check, ClipboardList, MessageSquare, RotateCcw, X } from 'lucide-react';
 import { AnalysisResponse, ScenarioSummary } from '../types';
 import { EvidenceStateIndicator } from './EvidenceStateIndicator';
 import { ConditionCheckList } from './ConditionCheckList';
 import { MissingInfoPanel } from './MissingInfoPanel';
 import { ConflictPanel } from './ConflictPanel';
 import { ProvenanceTrace } from './ProvenanceTrace';
+import { CaseQuestionBox } from './CaseQuestionBox';
 
 interface Props {
   analysis: AnalysisResponse | null;
@@ -25,13 +28,13 @@ export const AnalysisView: React.FC<Props> = ({
 
   if (isLoading) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-12 text-slate-400 space-y-3">
-        <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-        <div className="text-sm font-medium text-slate-600">
-          Running deterministic reasoning pipeline...
+      <div className="flex-1 flex flex-col items-center justify-center p-12 text-ink-faint space-y-3">
+        <div className="w-7 h-7 border-2 border-signal border-t-transparent rounded-full animate-spin" />
+        <div className="text-sm font-medium text-ink-soft">
+          Running deterministic reasoning pipeline
         </div>
-        <div className="text-xs text-slate-400">
-          Validating schema • Confidence gating • Evaluating criteria • Checking conflicts
+        <div className="text-xs text-ink-faint font-mono">
+          schema · confidence gating · criteria · conflicts
         </div>
       </div>
     );
@@ -39,11 +42,12 @@ export const AnalysisView: React.FC<Props> = ({
 
   if (!analysis) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-12 text-center text-slate-400 space-y-2">
-        <div className="text-4xl mb-2">📋</div>
-        <h3 className="text-base font-semibold text-slate-700">No Patient Case Selected</h3>
-        <p className="text-sm text-slate-500 max-w-md">
-          Select one of the 6 demo clinical scenarios from the sidebar, or upload a custom clinical note to evaluate justified conclusions.
+      <div className="flex-1 flex flex-col items-center justify-center p-12 text-center space-y-3">
+        <ClipboardList className="text-ink-faint" size={32} strokeWidth={1.5} />
+        <h3 className="text-base font-semibold text-ink-soft">No case selected</h3>
+        <p className="text-sm text-ink-faint max-w-md">
+          Choose one of the demo cases from the rail, or upload a custom clinical note to
+          evaluate justified conclusions.
         </p>
       </div>
     );
@@ -56,24 +60,41 @@ export const AnalysisView: React.FC<Props> = ({
   const conditionCount = reasoning_result.condition_checks?.length || 0;
   const sourceCount = reasoning_result.source_trace?.length || 0;
 
+  const tabs: { id: TabType; label: string; count?: number; countTone?: 'neutral' | 'caution' | 'critical' }[] = [
+    { id: 'overview', label: 'Summary & claims' },
+    { id: 'conditions', label: 'Condition checks', count: conditionCount },
+    { id: 'missing', label: 'Missing evidence', count: missingCount, countTone: 'caution' },
+    { id: 'conflicts', label: 'Guideline conflicts', count: conflictCount, countTone: 'critical' },
+    { id: 'provenance', label: 'Sources consulted', count: sourceCount },
+    { id: 'pipeline', label: 'Pipeline trace' },
+  ];
+
+  const countClass = (tone?: 'neutral' | 'caution' | 'critical') =>
+    tone === 'critical'
+      ? 'bg-state-critical-soft text-state-critical'
+      : tone === 'caution'
+        ? 'bg-state-caution-soft text-state-caution'
+        : 'bg-paper text-ink-faint';
+
   return (
-    <main className="flex-1 overflow-y-auto bg-slate-50 p-6 md:p-8 space-y-6">
+    <main className="flex-1 overflow-y-auto bg-paper p-6 md:p-8 space-y-5">
       {/* Header bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-paper-raised p-5 rounded border border-line">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-mono font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-              CASE: {analysis.case_id}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-mono font-semibold text-ink-faint">
+              {analysis.case_id}
             </span>
-            <span className="text-xs text-slate-400">
-              Evaluated at {new Date(analysis.timestamp).toLocaleTimeString()}
+            <span className="text-line">·</span>
+            <span className="text-xs text-ink-faint font-mono">
+              {new Date(analysis.timestamp).toLocaleTimeString()}
             </span>
           </div>
-          <h1 className="text-lg font-bold text-slate-900 mt-1">
-            {scenario ? scenario.title : 'Custom Clinical Evaluation'}
+          <h1 className="text-lg font-bold text-ink mt-1">
+            {scenario ? scenario.title : 'Custom clinical evaluation'}
           </h1>
           {scenario && (
-            <p className="text-xs text-slate-600 mt-0.5 max-w-3xl">
+            <p className="text-xs text-ink-soft mt-0.5 max-w-3xl">
               {scenario.description}
             </p>
           )}
@@ -83,9 +104,9 @@ export const AnalysisView: React.FC<Props> = ({
           <button
             onClick={onRerun}
             disabled={isLoading}
-            className="self-start sm:self-auto text-xs font-semibold px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border border-slate-300 transition-colors shrink-0 flex items-center gap-1.5"
+            className="self-start sm:self-auto text-xs font-semibold px-3 py-2 text-ink-soft hover:text-ink hover:bg-paper rounded border border-line transition-colors shrink-0 flex items-center gap-1.5"
           >
-            <span>↻</span> Re-evaluate
+            <RotateCcw size={13} /> Re-evaluate
           </button>
         )}
       </div>
@@ -97,234 +118,193 @@ export const AnalysisView: React.FC<Props> = ({
         explanationSource={explanation_source}
       />
 
+      {/* Ask-about-this-case — separate, honest, best-effort LLM answer */}
+      <CaseQuestionBox key={analysis.case_id} caseId={analysis.case_id} reasoningResult={reasoning_result} />
+
       {/* Navigation Tabs */}
-      <div className="border-b border-slate-200 flex items-center gap-2 overflow-x-auto pb-px">
-        <button
-          onClick={() => setActiveTab('overview')}
-          className={`px-4 py-2.5 text-xs font-bold transition-all border-b-2 whitespace-nowrap ${
-            activeTab === 'overview'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          Clinical Summary & Claims
-        </button>
-        <button
-          onClick={() => setActiveTab('conditions')}
-          className={`px-4 py-2.5 text-xs font-bold transition-all border-b-2 whitespace-nowrap flex items-center gap-1.5 ${
-            activeTab === 'conditions'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          <span>Condition Checks</span>
-          <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded-full font-mono">
-            {conditionCount}
-          </span>
-        </button>
-        <button
-          onClick={() => setActiveTab('missing')}
-          className={`px-4 py-2.5 text-xs font-bold transition-all border-b-2 whitespace-nowrap flex items-center gap-1.5 ${
-            activeTab === 'missing'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          <span>Missing Evidence</span>
-          {missingCount > 0 && (
-            <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded-full font-mono">
-              {missingCount}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setActiveTab('conflicts')}
-          className={`px-4 py-2.5 text-xs font-bold transition-all border-b-2 whitespace-nowrap flex items-center gap-1.5 ${
-            activeTab === 'conflicts'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          <span>Guideline Conflicts</span>
-          {conflictCount > 0 && (
-            <span className="text-[10px] bg-rose-100 text-rose-800 px-1.5 py-0.2 rounded-full font-mono font-bold">
-              {conflictCount}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setActiveTab('provenance')}
-          className={`px-4 py-2.5 text-xs font-bold transition-all border-b-2 whitespace-nowrap flex items-center gap-1.5 ${
-            activeTab === 'provenance'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          <span>Sources Consulted</span>
-          <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded-full font-mono">
-            {sourceCount}
-          </span>
-        </button>
-        <button
-          onClick={() => setActiveTab('pipeline')}
-          className={`px-4 py-2.5 text-xs font-bold transition-all border-b-2 whitespace-nowrap ${
-            activeTab === 'pipeline'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          Pipeline Trace
-        </button>
+      <div className="border-b border-line flex items-center gap-1 overflow-x-auto">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`relative px-3.5 py-2.5 text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 transition-colors ${
+              activeTab === tab.id ? 'text-ink' : 'text-ink-faint hover:text-ink-soft'
+            }`}
+          >
+            <span>{tab.label}</span>
+            {typeof tab.count === 'number' && tab.count > 0 && (
+              <span className={`text-[10px] font-mono px-1.5 rounded ${countClass(tab.countTone)}`}>
+                {tab.count}
+              </span>
+            )}
+            {activeTab === tab.id && (
+              <motion.div
+                layoutId="tab-underline"
+                className="absolute left-0 right-0 -bottom-px h-0.5 bg-signal"
+                transition={{ type: 'spring', stiffness: 500, damping: 40 }}
+              />
+            )}
+          </button>
+        ))}
       </div>
 
       {/* Tab Panels */}
-      {activeTab === 'overview' && (
-        <div className="space-y-6">
-          {/* Clinical Explanation Card */}
-          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <span>💬</span> Clinician Explanation
-              </h2>
-              <span className="text-xs text-slate-400">
-                Constrained to Authoritative Reasoning Payload
-              </span>
-            </div>
-
-            <div className="prose prose-sm max-w-none text-slate-700 bg-slate-50/70 p-4 rounded-lg border border-slate-200/60 leading-relaxed font-sans whitespace-pre-line">
-              {explanation}
-            </div>
-          </div>
-
-          {/* Supported & Unsupported Claims Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Supported Claims */}
-            <div className="bg-white rounded-xl border border-emerald-200 p-5 shadow-xs space-y-3">
-              <h3 className="text-sm font-bold text-emerald-950 flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 text-xs flex items-center justify-center font-bold">
-                  ✓
-                </span>
-                Claims Supported by Evidence
-              </h3>
-
-              {reasoning_result.supported_claims.length === 0 ? (
-                <p className="text-xs text-slate-400 italic">
-                  No claims currently established by the available evidence.
-                </p>
-              ) : (
-                <ul className="space-y-2">
-                  {reasoning_result.supported_claims.map((claim, i) => (
-                    <li
-                      key={i}
-                      className="text-xs font-medium text-emerald-900 bg-emerald-50/60 border border-emerald-200/60 p-2.5 rounded-lg leading-relaxed"
-                    >
-                      {claim}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-
-            {/* Unsupported Claims */}
-            <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-3">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-600 text-xs flex items-center justify-center font-bold">
-                  ✗
-                </span>
-                Claims NOT Supported
-              </h3>
-
-              {reasoning_result.unsupported_claims.length === 0 ? (
-                <p className="text-xs text-slate-400 italic">
-                  No explicitly evaluated claims were rejected.
-                </p>
-              ) : (
-                <ul className="space-y-2">
-                  {reasoning_result.unsupported_claims.map((claim, i) => (
-                    <li
-                      key={i}
-                      className="text-xs font-medium text-slate-700 bg-slate-50 border border-slate-200/70 p-2.5 rounded-lg leading-relaxed"
-                    >
-                      {claim}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-
-          {/* Reasoning Rationale Points */}
-          {reasoning_result.reasons.length > 0 && (
-            <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-2">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                Deterministic Engine Rationales
-              </h3>
-              <ul className="space-y-1.5 text-xs text-slate-700">
-                {reasoning_result.reasons.map((r, i) => (
-                  <li key={i} className="flex items-start gap-2">
-                    <span className="text-blue-500 font-bold">•</span>
-                    <span>{r}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
-
-      {activeTab === 'conditions' && (
-        <ConditionCheckList checks={reasoning_result.condition_checks} />
-      )}
-
-      {activeTab === 'missing' && (
-        <MissingInfoPanel missingInfo={reasoning_result.missing_information} />
-      )}
-
-      {activeTab === 'conflicts' && (
-        <ConflictPanel conflicts={reasoning_result.conflicts} />
-      )}
-
-      {activeTab === 'provenance' && (
-        <ProvenanceTrace sourceTrace={reasoning_result.source_trace} />
-      )}
-
-      {activeTab === 'pipeline' && (
-        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs space-y-4">
-          <div>
-            <h3 className="text-sm font-bold text-slate-900">
-              Pipeline Execution Trace (§1 Flowchart Audit)
-            </h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Deterministic pipeline stage transitions executed for this case.
-            </p>
-          </div>
-
-          {pipeline_trace?.pipeline_stages ? (
-            <div className="space-y-3">
-              {pipeline_trace.pipeline_stages.map((stage, i) => (
-                <div
-                  key={i}
-                  className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-[10px]">
-                      {i + 1}
-                    </span>
-                    <span className="font-semibold text-slate-800 font-mono">
-                      {stage.stage}
-                    </span>
-                  </div>
-                  <div className="text-slate-600 font-medium">
-                    {stage.result || stage.status || stage.state || stage.action || 'OK'}
-                  </div>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeTab}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.15 }}
+        >
+          {activeTab === 'overview' && (
+            <div className="space-y-5">
+              {/* Clinical Explanation Card */}
+              <div className="bg-paper-raised rounded border border-line p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
+                    <MessageSquare size={15} className="text-ink-faint" /> Clinician explanation
+                  </h2>
+                  <span className="text-[11px] text-ink-faint">
+                    Constrained to the reasoning payload
+                  </span>
                 </div>
-              ))}
+
+                <div className="text-sm text-ink-soft bg-paper p-4 rounded border border-line leading-relaxed whitespace-pre-line">
+                  {explanation}
+                </div>
+              </div>
+
+              {/* Supported & Unsupported Claims Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {/* Supported Claims */}
+                <div className="bg-paper-raised rounded border border-line p-5 space-y-3">
+                  <h3 className="text-sm font-semibold text-ink flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-state-good-soft text-state-good flex items-center justify-center">
+                      <Check size={12} strokeWidth={3} />
+                    </span>
+                    Claims supported by evidence
+                  </h3>
+
+                  {reasoning_result.supported_claims.length === 0 ? (
+                    <p className="text-xs text-ink-faint italic">
+                      No claims currently established by the available evidence.
+                    </p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {reasoning_result.supported_claims.map((claim, i) => (
+                        <li
+                          key={i}
+                          className="text-xs font-medium text-ink-soft bg-state-good-soft/50 border border-state-good-line p-2.5 rounded leading-relaxed"
+                        >
+                          {claim}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                {/* Unsupported Claims */}
+                <div className="bg-paper-raised rounded border border-line p-5 space-y-3">
+                  <h3 className="text-sm font-semibold text-ink flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-paper text-ink-faint flex items-center justify-center">
+                      <X size={12} strokeWidth={3} />
+                    </span>
+                    Claims not supported
+                  </h3>
+
+                  {reasoning_result.unsupported_claims.length === 0 ? (
+                    <p className="text-xs text-ink-faint italic">
+                      No explicitly evaluated claims were rejected.
+                    </p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {reasoning_result.unsupported_claims.map((claim, i) => (
+                        <li
+                          key={i}
+                          className="text-xs font-medium text-ink-soft bg-paper border border-line p-2.5 rounded leading-relaxed"
+                        >
+                          {claim}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+
+              {/* Reasoning Rationale Points */}
+              {reasoning_result.reasons.length > 0 && (
+                <div className="bg-paper-raised rounded border border-line p-5 space-y-2">
+                  <h3 className="text-xs font-semibold text-ink-soft">
+                    Deterministic engine rationale
+                  </h3>
+                  <ul className="space-y-1.5 text-xs text-ink-soft">
+                    {reasoning_result.reasons.map((r, i) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="text-signal font-bold">·</span>
+                        <span>{r}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
-          ) : (
-            <p className="text-xs text-slate-400 italic">No pipeline trace available.</p>
           )}
-        </div>
-      )}
+
+          {activeTab === 'conditions' && (
+            <ConditionCheckList checks={reasoning_result.condition_checks} />
+          )}
+
+          {activeTab === 'missing' && (
+            <MissingInfoPanel missingInfo={reasoning_result.missing_information} />
+          )}
+
+          {activeTab === 'conflicts' && (
+            <ConflictPanel conflicts={reasoning_result.conflicts} />
+          )}
+
+          {activeTab === 'provenance' && (
+            <ProvenanceTrace sourceTrace={reasoning_result.source_trace} />
+          )}
+
+          {activeTab === 'pipeline' && (
+            <div className="bg-paper-raised rounded border border-line p-6 space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold text-ink">
+                  Pipeline execution trace
+                </h3>
+                <p className="text-xs text-ink-faint mt-0.5">
+                  Deterministic pipeline stage transitions executed for this case.
+                </p>
+              </div>
+
+              {pipeline_trace?.pipeline_stages ? (
+                <div className="space-y-2">
+                  {pipeline_trace.pipeline_stages.map((stage, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between p-3 bg-paper rounded border border-line text-xs"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="w-5 h-5 rounded-full bg-signal-soft text-signal font-mono font-semibold flex items-center justify-center text-[10px]">
+                          {i + 1}
+                        </span>
+                        <span className="font-semibold text-ink font-mono">
+                          {stage.stage}
+                        </span>
+                      </div>
+                      <div className="text-ink-soft font-medium">
+                        {stage.result || stage.status || stage.state || stage.action || 'OK'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-ink-faint italic">No pipeline trace available.</p>
+              )}
+            </div>
+          )}
+        </motion.div>
+      </AnimatePresence>
     </main>
   );
 };

@@ -130,3 +130,12 @@ export interface ScenarioAnalysisResponse {
   scenario: ScenarioSummary;
   analysis: AnalysisResponse;
 }
+
+export interface UploadResult {
+  extracted_case: any;
+  analysis: AnalysisResponse;
+}
+
+export interface AskResponse {
+  answer: string;
+}

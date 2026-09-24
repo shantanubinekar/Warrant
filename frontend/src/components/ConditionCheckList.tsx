@@ -1,35 +1,21 @@
 import React from 'react';
+import { Check, HelpCircle, X } from 'lucide-react';
 import { ConditionCheck, ConditionResult } from '../types';
 
 interface Props {
   checks: ConditionCheck[];
 }
 
-const RESULT_BADGE: Record<ConditionResult, { label: string; bg: string; text: string; border: string }> = {
-  PASS: {
-    label: 'PASS',
-    bg: 'bg-emerald-50',
-    text: 'text-emerald-700',
-    border: 'border-emerald-200',
-  },
-  FAIL: {
-    label: 'FAIL',
-    bg: 'bg-rose-50',
-    text: 'text-rose-700',
-    border: 'border-rose-200',
-  },
-  UNKNOWN: {
-    label: 'UNKNOWN',
-    bg: 'bg-slate-100',
-    text: 'text-slate-600',
-    border: 'border-slate-300',
-  },
+const RESULT_BADGE: Record<ConditionResult, { label: string; text: string; soft: string; line: string; icon: typeof Check }> = {
+  PASS: { label: 'PASS', text: 'text-state-good', soft: 'bg-state-good-soft', line: 'border-state-good-line', icon: Check },
+  FAIL: { label: 'FAIL', text: 'text-state-critical', soft: 'bg-state-critical-soft', line: 'border-state-critical-line', icon: X },
+  UNKNOWN: { label: 'UNKNOWN', text: 'text-ink-faint', soft: 'bg-paper', line: 'border-line', icon: HelpCircle },
 };
 
 export const ConditionCheckList: React.FC<Props> = ({ checks }) => {
   if (!checks || checks.length === 0) {
     return (
-      <div className="p-6 text-center text-slate-500 bg-white rounded-lg border border-slate-200 text-sm">
+      <div className="p-6 text-center text-ink-faint bg-paper-raised rounded border border-line text-sm">
         No condition checks recorded for this case.
       </div>
     );
@@ -40,59 +26,60 @@ export const ConditionCheckList: React.FC<Props> = ({ checks }) => {
   const unknownCount = checks.filter((c) => c.result === 'UNKNOWN').length;
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
-      <div className="px-5 py-4 bg-slate-50/70 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+    <div className="bg-paper-raised rounded border border-line overflow-hidden">
+      <div className="px-5 py-4 bg-paper border-b border-line flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="font-semibold text-slate-900 text-sm">
-            Deterministic Condition Verification Log
+          <h3 className="font-semibold text-ink text-sm">
+            Deterministic condition verification log
           </h3>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Individual guideline logic gates evaluated by deterministic engine (PASS / FAIL / UNKNOWN)
+          <p className="text-xs text-ink-faint mt-0.5">
+            Individual guideline logic gates evaluated by the deterministic engine
           </p>
         </div>
-        <div className="flex items-center gap-2 text-xs">
-          <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-medium">
-            {passCount} PASS
+        <div className="flex items-center gap-2 text-xs font-mono">
+          <span className="px-2 py-0.5 rounded bg-state-good-soft text-state-good font-medium">
+            {passCount} pass
           </span>
-          <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-medium">
-            {failCount} FAIL
+          <span className="px-2 py-0.5 rounded bg-state-critical-soft text-state-critical font-medium">
+            {failCount} fail
           </span>
-          <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-800 font-medium">
-            {unknownCount} UNKNOWN
+          <span className="px-2 py-0.5 rounded bg-paper border border-line text-ink-faint font-medium">
+            {unknownCount} unknown
           </span>
         </div>
       </div>
 
-      <div className="divide-y divide-slate-100">
+      <div className="divide-y divide-line">
         {checks.map((check, idx) => {
           const badge = RESULT_BADGE[check.result] || RESULT_BADGE.UNKNOWN;
+          const Icon = badge.icon;
           return (
-            <div key={idx} className="p-4 hover:bg-slate-50/50 transition-colors">
+            <div key={idx} className="p-4 hover:bg-paper/60 transition-colors">
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono text-xs font-semibold text-slate-800">
+                    <span className="font-mono text-xs font-semibold text-ink">
                       {check.condition_name}
                     </span>
                     {check.evidence_used && (
-                      <span className="text-xs text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                      <span className="text-xs text-ink-faint bg-paper px-1.5 py-0.5 rounded border border-line">
                         evidence: {check.evidence_used}
                       </span>
                     )}
                   </div>
-                  <p className="text-sm text-slate-700 leading-relaxed">
+                  <p className="text-sm text-ink-soft leading-relaxed">
                     {check.reason}
                   </p>
                   {check.source_reference && (
-                    <div className="text-xs text-slate-400 italic">
+                    <div className="text-xs text-ink-faint italic">
                       Source ref: {check.source_reference}
                     </div>
                   )}
                 </div>
                 <span
-                  className={`text-xs font-bold px-2.5 py-1 rounded-md border shrink-0 ${badge.bg} ${badge.text} ${badge.border}`}
+                  className={`text-xs font-semibold px-2 py-1 rounded border shrink-0 flex items-center gap-1 ${badge.soft} ${badge.text} ${badge.line}`}
                 >
-                  {badge.label}
+                  <Icon size={11} strokeWidth={3} /> {badge.label}
                 </span>
               </div>
             </div>

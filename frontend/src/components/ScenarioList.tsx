@@ -1,5 +1,7 @@
 import React from 'react';
-import { ScenarioSummary, EvidenceState } from '../types';
+import { FilePlus2 } from 'lucide-react';
+import { ScenarioSummary } from '../types';
+import { evidenceStateConfig } from '../theme/evidenceStates';
 
 interface Props {
   scenarios: ScenarioSummary[];
@@ -9,15 +11,6 @@ interface Props {
   onOpenUpload: () => void;
 }
 
-const STATE_BADGES: Record<EvidenceState, { bg: string; text: string; label: string }> = {
-  SUFFICIENT: { bg: 'bg-emerald-100', text: 'text-emerald-800', label: 'SUFFICIENT' },
-  INCOMPLETE: { bg: 'bg-amber-100', text: 'text-amber-800', label: 'INCOMPLETE' },
-  ADDITIONAL_INFORMATION_REQUIRED: { bg: 'bg-amber-100', text: 'text-amber-800', label: 'ADDITIONAL INFO' },
-  CONFLICTING: { bg: 'bg-rose-100', text: 'text-rose-800', label: 'CONFLICTING' },
-  QUESTIONABLE: { bg: 'bg-orange-100', text: 'text-orange-800', label: 'QUESTIONABLE' },
-  NO_RELIABLE_CONCLUSION: { bg: 'bg-slate-200', text: 'text-slate-800', label: 'NO CONCLUSION' },
-};
-
 export const ScenarioList: React.FC<Props> = ({
   scenarios,
   selectedId,
@@ -26,59 +19,60 @@ export const ScenarioList: React.FC<Props> = ({
   onOpenUpload,
 }) => {
   return (
-    <aside className="w-full md:w-80 lg:w-96 flex flex-col bg-white border-r border-slate-200 h-full shrink-0">
-      <div className="p-4 border-b border-slate-200 bg-slate-50/50">
+    <aside className="w-full md:w-80 lg:w-96 flex flex-col bg-paper-raised border-r border-line h-full shrink-0">
+      <div className="p-4 border-b border-line">
         <div className="flex items-center justify-between gap-2">
           <div>
-            <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Mode A: Demo Scenarios
+            <h2 className="text-xs font-semibold text-ink">
+              Demo case set
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              6 test cases covering all evidence states
+            <p className="text-[11px] text-ink-faint mt-0.5">
+              6 cases covering every evidence state
             </p>
           </div>
           <button
             onClick={onOpenUpload}
-            className="text-xs font-semibold px-2.5 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-md transition-colors"
-            title="Custom Clinical Text (Mode B)"
+            className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 text-signal hover:bg-signal-soft border border-line hover:border-signal/30 rounded transition-colors"
+            title="Upload a case"
           >
-            + Upload Note
+            <FilePlus2 size={13} /> Upload
           </button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+      <div className="flex-1 overflow-y-auto divide-y divide-line">
         {scenarios.map((sc) => {
           const isSelected = selectedId === sc.id;
-          const badge = STATE_BADGES[sc.target_state] || STATE_BADGES.NO_RELIABLE_CONCLUSION;
+          const config = evidenceStateConfig(sc.target_state);
 
           return (
             <button
               key={sc.id}
               onClick={() => onSelect(sc.id)}
               disabled={isLoading}
-              className={`w-full text-left p-4 transition-all hover:bg-slate-50 relative flex flex-col gap-2 ${
-                isSelected
-                  ? 'bg-blue-50/50 border-l-4 border-blue-600 shadow-xs'
-                  : 'border-l-4 border-transparent'
+              className={`w-full text-left p-4 transition-colors relative flex flex-col gap-2 ${
+                isSelected ? 'bg-signal-soft' : 'hover:bg-paper'
               }`}
             >
+              {isSelected && (
+                <span className="absolute left-0 top-0 bottom-0 w-0.5 bg-signal" aria-hidden="true" />
+              )}
               <div className="flex items-start justify-between gap-2">
-                <span className="text-xs font-bold text-slate-400">
-                  #{sc.id}
+                <span className="text-[11px] font-mono font-semibold text-ink-faint">
+                  CASE {String(sc.id).padStart(2, '0')}
                 </span>
                 <span
-                  className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${badge.bg} ${badge.text}`}
+                  className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded border ${config.line} ${config.text}`}
                 >
-                  {badge.label}
+                  {config.short}
                 </span>
               </div>
 
               <div>
-                <h3 className={`text-sm font-semibold leading-snug ${isSelected ? 'text-blue-950 font-bold' : 'text-slate-800'}`}>
+                <h3 className={`text-sm font-semibold leading-snug ${isSelected ? 'text-ink' : 'text-ink-soft'}`}>
                   {sc.title}
                 </h3>
-                <p className="text-xs text-slate-500 line-clamp-2 mt-1 leading-relaxed">
+                <p className="text-xs text-ink-faint line-clamp-2 mt-1 leading-relaxed">
                   {sc.description}
                 </p>
               </div>
@@ -87,8 +81,9 @@ export const ScenarioList: React.FC<Props> = ({
         })}
       </div>
 
-      <div className="p-3 bg-slate-50 border-t border-slate-200 text-[11px] text-slate-500 leading-normal">
-        <span className="font-semibold text-slate-700">Architecture Guarantee:</span> All cases run through the exact same deterministic reasoning pipeline — zero hardcoded results.
+      <div className="p-3.5 border-t border-line text-[11px] text-ink-faint leading-normal">
+        <span className="font-semibold text-ink-soft">Architecture guarantee —</span> every case runs
+        through the same deterministic reasoning pipeline. No hardcoded results.
       </div>
     </aside>
   );
