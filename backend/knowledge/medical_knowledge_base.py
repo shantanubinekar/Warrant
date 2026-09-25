@@ -224,6 +224,7 @@ class MedicalKnowledgeBase:
                     "troponin values above the 99th percentile upper reference limit (URL) "
                     "with at least one value rising and/or falling."
                 ),
+                strength_rank=1,
             ),
 
             StructuredClaim(
@@ -255,6 +256,7 @@ class MedicalKnowledgeBase:
                     "imaging evidence of new loss of viable myocardium or new regional "
                     "wall motion abnormality, or identification of coronary thrombus."
                 ),
+                strength_rank=3,
             ),
 
             StructuredClaim(
@@ -275,6 +277,7 @@ class MedicalKnowledgeBase:
                     "STEMI is identified by new ST-elevation at the J point in "
                     "two or more contiguous leads."
                 ),
+                strength_rank=3,
             ),
 
             StructuredClaim(
@@ -303,6 +306,7 @@ class MedicalKnowledgeBase:
                     "(troponin rise/fall above 99th percentile URL) with clinical "
                     "evidence of ischemia, but WITHOUT persistent ST-segment elevation."
                 ),
+                strength_rank=3,
             ),
 
             StructuredClaim(
@@ -324,6 +328,7 @@ class MedicalKnowledgeBase:
                 claim_text=(
                     "Serial troponin timing algorithm for rapid assessment."
                 ),
+                strength_rank=1,
             ),
         ]
 
@@ -395,3 +400,7 @@ class MedicalKnowledgeBase:
             source_ids.update(claim.supporting_sources)
 
         return [s for s in self._sources if s.source_id in source_ids]
+
+    def get_references(self) -> List[str]:
+        """Return a list of provenance reference strings from all sources."""
+        return [s.provenance for s in self._sources if s.provenance]

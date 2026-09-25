@@ -14,6 +14,7 @@ Endpoints:
 import json
 import logging
 from typing import Optional
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
@@ -168,11 +169,37 @@ def analyze_custom_case(case: PatientCase):
 # ── Shared extraction + pipeline helper ──────────────────────────────
 
 def _extract_and_analyze(clinical_text: str, case_description: Optional[str]) -> dict:
-    """Run LLM extraction then the deterministic pipeline over clinical text.
+    """Run claim domain identification, extraction (if in scope), and pipeline analysis.
 
     Shared by both the pasted-text upload and the file upload endpoints so
     they behave identically once text is in hand.
     """
+    # 1. Identify clinical domain/condition FIRST (cheap separate call)
+    target_condition = llm_client.identify_claim_domain(clinical_text)
+    if not target_condition:
+        target_condition = "unknown"
+
+    # 2. Check if the condition exists in the knowledge registry
+    registry = pipeline.reasoning_engine.claim_registry
+    available_domains = registry.get_available_domains()
+    is_domain_match = any(target_condition.lower() in d.lower() or d.lower() in target_condition.lower() for d in available_domains)
+    is_claim_match = registry.claim_exists(target_condition)
+
+    if not (is_domain_match or is_claim_match):
+        # Out-of-scope domain: do NOT run heavy extraction, retrieval, or reasoning
+        logger.info(f"Clinical text identified as out-of-scope domain '{target_condition}' — skipping extraction")
+        patient_case = PatientCase(
+            case_id=f"out_of_scope_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            case_description=case_description or "Clinical text out of scope",
+            target_condition=target_condition,
+        )
+        response = pipeline.run_pipeline(patient_case)
+        return {
+            "extracted_case": patient_case.model_dump(mode="json"),
+            "analysis": response.model_dump(mode="json"),
+        }
+
+    # 3. In-scope: proceed with evidence extraction
     patient_case = llm_client.extract_evidence(clinical_text)
     if patient_case is None:
         raise HTTPException(
@@ -180,6 +207,7 @@ def _extract_and_analyze(clinical_text: str, case_description: Optional[str]) ->
             detail="Failed to extract structured evidence from the provided text",
         )
 
+    patient_case.target_condition = target_condition
     if case_description:
         patient_case.case_description = case_description
 

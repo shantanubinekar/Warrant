@@ -13,12 +13,18 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from backend.schemas.patient_evidence import PatientCase
-from backend.schemas.engine_output import AnalysisResponse, ReasoningResult, StateAction
+from backend.schemas.patient_evidence import (
+    PatientCase, EvidenceState, ConditionResult,
+    ConflictStatus, CorroborationStatus,
+)
+from backend.schemas.engine_output import (
+    AnalysisResponse, ReasoningResult, StateAction, ConditionCheck,
+)
 from backend.engine.reasoning_engine import ReasoningEngine
 from backend.engine.state_action_mapper import StateActionMapper
 from backend.validators.output_validator import OutputValidator
 from backend.knowledge.medical_knowledge_base import MedicalKnowledgeBase
+from backend.retrieval.retrieval_manager import RetrievalManager
 
 logger = logging.getLogger(__name__)
 
@@ -34,16 +40,23 @@ class PipelineOrchestrator:
     explanation generation — never for state determination.
     """
 
-    def __init__(self, llm_client=None):
+    def __init__(self, llm_client=None, enable_retrieval: Optional[bool] = None):
         """
         Args:
             llm_client: Optional LLM client for explanation generation.
                         If None, uses template fallback for all explanations.
+            enable_retrieval: Whether to run live web search retrieval. Defaults
+                              to ENABLE_WEB_RETRIEVAL env var (default: True).
         """
+        import os
+        if enable_retrieval is None:
+            enable_retrieval = os.environ.get("ENABLE_WEB_RETRIEVAL", "true").lower() in ("1", "true", "yes")
+        self.enable_retrieval = enable_retrieval
         self.reasoning_engine = ReasoningEngine()
         self.state_action_mapper = StateActionMapper()
         self.output_validator = OutputValidator()
         self.knowledge_base = MedicalKnowledgeBase()
+        self.retrieval_manager = RetrievalManager()
         self.llm_client = llm_client
 
     def run_pipeline(self, case: PatientCase) -> AnalysisResponse:
@@ -55,10 +68,79 @@ class PipelineOrchestrator:
         Returns:
             AnalysisResponse with state, explanation, and full provenance.
         """
-        logger.info(f"Running pipeline for case: {case.case_id}")
+        # ── Scope & Rule Availability Check (BEFORE retrieval or reasoning) ──
+        if case.target_condition:
+            registry = self.reasoning_engine.claim_registry
+            available_domains = registry.get_available_domains()
+            available_claims = registry.get_claim_descriptions()
+            target_lower = case.target_condition.lower()
+            is_domain_match = any(target_lower in d.lower() or d.lower() in target_lower for d in available_domains)
+            is_claim_match = registry.claim_exists(case.target_condition)
+
+            if not (is_domain_match or is_claim_match):
+                logger.info(f"Target condition '{case.target_condition}' is not in knowledge base — triggering RULE_NOT_AVAILABLE")
+                covered_domains_str = ", ".join(d.upper() for d in available_domains)
+                
+                reasoning_result = ReasoningResult(
+                    state=EvidenceState.RULE_NOT_AVAILABLE,
+                    supported_claims=[],
+                    unsupported_claims=[f"Target condition '{case.target_condition}' is not covered by validated knowledge base entries"],
+                    missing_information=[],
+                    conflicts=[],
+                    source_trace=[],
+                    reasons=[
+                        f"State: RULE_NOT_AVAILABLE — no validated clinical rule or guideline entry exists for condition '{case.target_condition}'.",
+                        f"Validated knowledge domains currently supported: [{covered_domains_str}].",
+                    ],
+                    condition_checks=[ConditionCheck(
+                        condition_name="rule_availability",
+                        result=ConditionResult.FAIL_RESULT,
+                        reason=f"No validated knowledge-base entry for '{case.target_condition}'",
+                    )],
+                    conflict_status=ConflictStatus.NOT_ASSESSABLE,
+                    corroboration_status=CorroborationStatus.NOT_ASSESSABLE,
+                    generic_completeness=ConditionResult.UNKNOWN,
+                    criteria_specific_completeness=ConditionResult.UNKNOWN,
+                    retrieval_citations=[],
+                )
+                action = self.state_action_mapper.map_state_to_action(reasoning_result.state, reasoning_result)
+                explanation = (
+                    f"## Evidence Assessment: RULE_NOT_AVAILABLE\n\n"
+                    f"No validated clinical rule or guideline entry exists for condition '{case.target_condition}'.\n"
+                    f"The system operates exclusively on validated clinical knowledge and withholds conclusions "
+                    f"for out-of-scope conditions.\n\n"
+                    f"### Covered Domains & Rules\n"
+                    f"The system currently supports the following validated medical domains:\n"
+                    f"  • {covered_domains_str}\n\n"
+                    f"Covered clinical claims:\n"
+                    f"  • " + "\n  • ".join(f"{cid}: {desc}" for cid, desc in available_claims.items())
+                )
+                return AnalysisResponse(
+                    case_id=case.case_id,
+                    reasoning_result=reasoning_result,
+                    action=action,
+                    explanation=explanation,
+                    explanation_source="template",
+                    pipeline_trace={"pipeline_stages": ["rule_availability_check"]},
+                    timestamp=datetime.now(timezone.utc).isoformat(),
+                )
+
+        # ── Step: Live Web Retrieval for Grounding / Citations ───────────
+        # CRITICAL: Retrieved passages are CITATIONS ONLY — NEVER rules.
+        citations = []
+        if self.enable_retrieval:
+            try:
+                self.retrieval_manager.reset()
+                applicable_claims = self.knowledge_base.get_applicable_claims(case)
+                for claim in applicable_claims:
+                    claim_citations = self.retrieval_manager.retrieve_for_claim(claim)
+                    citations.extend(claim_citations)
+            except Exception as e:
+                logger.warning(f"Retrieval error: {e}")
 
         # ── Steps 1–9: Deterministic reasoning (inside ReasoningEngine) ──
         reasoning_result = self.reasoning_engine.reason(case, self.knowledge_base)
+        reasoning_result.retrieval_citations = citations
         logger.info(f"Reasoning result state: {reasoning_result.state.value}")
 
         # ── Step: State → Action mapping ─────────────────────────────────

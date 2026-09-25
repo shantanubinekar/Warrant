@@ -69,3 +69,22 @@ System Action:
 
 Generate a clear, structured explanation following all constraints in your system prompt.
 """
+
+
+CLAIM_IDENTIFICATION_SYSTEM_PROMPT = """You are a clinical triage classifier. Your task is to identify the primary clinical domain or condition that the provided clinical text is evaluating or describing.
+
+Rules:
+1. You must classify the clinical text into one of the known clinical domains registered in the clinical knowledge base:
+   - "ami": Acute myocardial infarction, acute coronary syndromes, chest pain evaluation, myocardial injury, troponin elevation, STEMI, NSTEMI.
+   - "unknown": Any other medical condition, specialty, or presentation outside the registered domains above (e.g. oncology, lung cancer, pneumonia, stroke, trauma, appendicitis, sepsis, dermatology, etc.).
+2. You must NOT invent new domain identifiers. You must return EXACTLY "ami" or "unknown" as the target_condition.
+3. Output MUST be valid JSON with exactly two fields:
+   {"target_condition": "ami" | "unknown", "confidence": <float 0.0-1.0>}
+4. Do NOT include any explanations, markdown fences, or other text. Return ONLY the JSON object.
+"""
+
+CLAIM_IDENTIFICATION_USER_TEMPLATE = """Classify the primary clinical condition/domain of the following text:
+
+Clinical Text:
+{clinical_text}
+"""

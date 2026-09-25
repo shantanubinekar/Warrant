@@ -6,7 +6,7 @@ explanation generator is constrained to. The output validator checks
 the LLM explanation against this authoritative payload.
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from enum import Enum
 from typing import List, Optional, Dict
 
@@ -33,6 +33,22 @@ class ConflictDetail(BaseModel):
     source_b_position: str
     resolution_possible: bool = False
     resolution_note: Optional[str] = None
+
+
+class RetrievalCitation(BaseModel):
+    """A retrieved passage used ONLY as citation/grounding.
+
+    SAFETY: Retrieved passages are NEVER interpreted by the LLM into
+    executable rules or thresholds. They answer 'can we point to a real
+    source consistent with this decision', not 'what is the rule'.
+    """
+    query: str
+    domain: str
+    title: str
+    snippet: str
+    url: Optional[str] = None
+    requirement_matched: str
+    relevance: str = "UNKNOWN"
 
 
 class MissingInformation(BaseModel):
@@ -68,6 +84,7 @@ class ReasoningResult(BaseModel):
     corroboration_status: CorroborationStatus
     generic_completeness: ConditionResult
     criteria_specific_completeness: ConditionResult
+    retrieval_citations: List[RetrievalCitation] = Field(default_factory=list)
 
 
 class ActionType(str, Enum):

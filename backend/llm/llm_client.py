@@ -36,6 +36,7 @@ from backend.schemas.engine_output import ReasoningResult, StateAction
 from backend.llm.prompts import (
     EXTRACTION_SYSTEM_PROMPT, EXTRACTION_USER_TEMPLATE,
     EXPLANATION_SYSTEM_PROMPT, EXPLANATION_USER_TEMPLATE,
+    CLAIM_IDENTIFICATION_SYSTEM_PROMPT, CLAIM_IDENTIFICATION_USER_TEMPLATE,
 )
 
 
@@ -72,6 +73,40 @@ class LLMClient:
             logger.info(f"LLM client initialized with model: {self.model_name}")
         except Exception as e:
             logger.error(f"LLM client initialization failed: {e}\n{traceback.format_exc()}")
+
+    def identify_claim_domain(self, clinical_text: str) -> str:
+        """Classify which clinical domain/condition the text is primarily about.
+
+        Small, fast, separate LLM call before extraction runs.
+        Returns the registered domain string (e.g. 'ami') or 'unknown'.
+        """
+        if not self.available:
+            logger.warning("LLM not available — default claim domain to unknown")
+            return "unknown"
+
+        try:
+            prompt = CLAIM_IDENTIFICATION_USER_TEMPLATE.format(clinical_text=clinical_text)
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": CLAIM_IDENTIFICATION_SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.0,
+                response_format={"type": "json_object"},
+            )
+
+            raw_json = (response.choices[0].message.content or "").strip()
+            if not raw_json:
+                return "unknown"
+
+            data = json.loads(raw_json)
+            domain = data.get("target_condition", "unknown")
+            return domain.lower().strip() if isinstance(domain, str) else "unknown"
+
+        except Exception as e:
+            logger.warning(f"Claim domain identification failed: {e}")
+            return "unknown"
 
     def extract_evidence(self, clinical_text: str) -> Optional[PatientCase]:
         """Extract structured patient evidence from clinical text.

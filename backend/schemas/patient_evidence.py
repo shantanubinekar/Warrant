@@ -13,13 +13,15 @@ from datetime import datetime
 
 
 class EvidenceState(str, Enum):
-    """Six mutually exclusive evidence states from the Warrant architecture."""
+    """Evidence states from the Warrant architecture."""
     SUFFICIENT = "SUFFICIENT"
     INCOMPLETE = "INCOMPLETE"
     CONFLICTING = "CONFLICTING"
     QUESTIONABLE = "QUESTIONABLE"
     ADDITIONAL_INFORMATION_REQUIRED = "ADDITIONAL_INFORMATION_REQUIRED"
     NO_RELIABLE_CONCLUSION = "NO_RELIABLE_CONCLUSION"
+    WEAKER_CLAIM_ONLY = "WEAKER_CLAIM_ONLY"
+    RULE_NOT_AVAILABLE = "RULE_NOT_AVAILABLE"
 
 
 class VerificationStatus(str, Enum):
@@ -201,3 +203,4 @@ class PatientCase(BaseModel):
     timing: Optional[TimingEvidence] = None
     document_quality: Optional[DocumentQuality] = None
     raw_evidence_fields: Optional[List[EvidenceField]] = None
+    target_condition: Optional[str] = None

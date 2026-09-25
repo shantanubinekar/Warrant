@@ -18,9 +18,10 @@ from backend.schemas.engine_output import (
     ConflictDetail, SourceTraceEntry,
 )
 from backend.schemas.medical_knowledge import (
-    MedicalKnowledgeSource, StructuredClaim, SourceAssessment,
+    MedicalKnowledgeSource, StructuredClaim, SourceAssessment, ConditionNode,
 )
 from backend.knowledge.medical_knowledge_base import MedicalKnowledgeBase
+from backend.knowledge.claim_registry import ClaimRegistry
 from backend.knowledge.evidence_matrix import EvidenceMatrix
 from backend.validators.schema_validator import SchemaValidator
 from backend.validators.extraction_confidence import ExtractionConfidenceGate
@@ -50,6 +51,7 @@ class ReasoningEngine:
         self.source_assessor = SourceAssessor()
         self.conflict_detector = ConflictDetector()
         self.evidence_matrix = EvidenceMatrix()
+        self.claim_registry = ClaimRegistry()
 
     def reason(self, case: PatientCase, knowledge_base: MedicalKnowledgeBase) -> ReasoningResult:
         """Run the full deterministic reasoning pipeline.
@@ -66,6 +68,41 @@ class ReasoningEngine:
         supported_claims: List[str] = []
         unsupported_claims: List[str] = []
         reasons: List[str] = []
+
+        # ── Step 0: Scope and Rule Availability Check ─────────────────
+        if case.target_condition:
+            available_domains = self.claim_registry.get_available_domains()
+            available_claims = self.claim_registry.get_claim_descriptions()
+            target_lower = case.target_condition.lower()
+            is_domain_match = any(target_lower in d.lower() or d.lower() in target_lower for d in available_domains)
+            is_claim_match = self.claim_registry.claim_exists(case.target_condition)
+
+            if not (is_domain_match or is_claim_match):
+                covered_domains_str = ", ".join(d.upper() for d in available_domains)
+                covered_claims_str = ", ".join(available_claims.keys())
+                reasons.append(
+                    f"State: RULE_NOT_AVAILABLE — no validated clinical rule entry exists for condition '{case.target_condition}'. "
+                    f"Validated domains covered by system: [{covered_domains_str}]. "
+                    f"Available claims: [{covered_claims_str}]."
+                )
+                return ReasoningResult(
+                    state=EvidenceState.RULE_NOT_AVAILABLE,
+                    supported_claims=[],
+                    unsupported_claims=[f"Target condition '{case.target_condition}' is out of scope / not covered"],
+                    missing_information=[],
+                    conflicts=[],
+                    source_trace=[],
+                    reasons=reasons,
+                    condition_checks=[ConditionCheck(
+                        condition_name="rule_availability",
+                        result=ConditionResult.FAIL_RESULT,
+                        reason=f"No validated knowledge-base entry for '{case.target_condition}'",
+                    )],
+                    conflict_status=ConflictStatus.NOT_ASSESSABLE,
+                    corroboration_status=CorroborationStatus.NOT_ASSESSABLE,
+                    generic_completeness=ConditionResult.UNKNOWN,
+                    criteria_specific_completeness=ConditionResult.UNKNOWN,
+                )
 
         # ── Step 1: Schema validation ────────────────────────────────
         validation = self.schema_validator.validate_case(case)
@@ -211,7 +248,7 @@ class ReasoningEngine:
             ))
 
         # ── Step 8: Clinical criteria evaluation ─────────────────────
-        criteria_met = self._evaluate_clinical_criteria(
+        criteria_met, passed_claims, failed_claims = self._evaluate_clinical_criteria(
             case, applicable_claims, knowledge_base, condition_checks,
             supported_claims, unsupported_claims, reasons
         )
@@ -226,6 +263,8 @@ class ReasoningEngine:
             all_missing=all_missing,
             condition_checks=condition_checks,
             reasons=reasons,
+            passed_claims=passed_claims,
+            failed_claims=failed_claims,
         )
 
         # Determine askable missing information
@@ -255,284 +294,298 @@ class ReasoningEngine:
         supported_claims: List[str],
         unsupported_claims: List[str],
         reasons: List[str],
-    ) -> ConditionResult:
+    ) -> tuple[ConditionResult, List[StructuredClaim], List[StructuredClaim]]:
         """Evaluate clinical criteria against patient evidence.
 
-        Returns PASS if criteria are met, FAIL if explicitly not met,
-        UNKNOWN if cannot determine.
+        Returns (result, passed_claims, failed_claims).
         """
         if not applicable_claims:
-            return ConditionResult.UNKNOWN
+            return ConditionResult.UNKNOWN, [], []
 
         any_pass = False
         any_unknown = False
+        passed_claims: List[StructuredClaim] = []
+        failed_claims: List[StructuredClaim] = []
 
         for claim in applicable_claims:
-            result = self._evaluate_single_claim(
-                case, claim, knowledge_base, condition_checks, reasons
+            result = self.evaluate_claim(
+                claim, case, knowledge_base, condition_checks, reasons
             )
             if result == ConditionResult.PASS_RESULT:
                 supported_claims.append(claim.claim_text)
+                passed_claims.append(claim)
                 any_pass = True
             elif result == ConditionResult.UNKNOWN:
                 any_unknown = True
-                # Don't add to unsupported — UNKNOWN ≠ FAIL
+                failed_claims.append(claim)
+                # Don't add to unsupported_claims list — UNKNOWN ≠ FAIL
             else:
                 unsupported_claims.append(claim.claim_text)
+                failed_claims.append(claim)
 
         if any_pass:
-            return ConditionResult.PASS_RESULT
+            return ConditionResult.PASS_RESULT, passed_claims, failed_claims
         if any_unknown:
-            return ConditionResult.UNKNOWN
-        return ConditionResult.FAIL_RESULT
+            return ConditionResult.UNKNOWN, passed_claims, failed_claims
+        return ConditionResult.FAIL_RESULT, passed_claims, failed_claims
 
-    def _evaluate_single_claim(
+    def evaluate_claim(
         self,
+        claim: StructuredClaim,
+        case: PatientCase,
+        knowledge_base: MedicalKnowledgeBase,
+        condition_checks: List[ConditionCheck],
+        reasons: List[str],
+    ) -> ConditionResult:
+        """Generic evaluation of a structured claim via its condition tree.
+
+        Interprets AND/OR/NOT condition trees recursively.
+        Leaves are domain-agnostic condition checks.
+        No hardcoded disease-specific methods.
+        """
+        condition_tree = claim.condition_tree
+        if condition_tree is None:
+            registry_claim = self.claim_registry.get_claim(claim.claim_id)
+            if registry_claim:
+                condition_tree = registry_claim.condition_tree
+
+        if condition_tree is None:
+            return ConditionResult.UNKNOWN
+
+        return self._evaluate_condition_node(
+            condition_tree, case, claim, knowledge_base, condition_checks, reasons
+        )
+
+    def _evaluate_condition_node(
+        self,
+        node: ConditionNode,
         case: PatientCase,
         claim: StructuredClaim,
         knowledge_base: MedicalKnowledgeBase,
         condition_checks: List[ConditionCheck],
         reasons: List[str],
     ) -> ConditionResult:
-        """Evaluate a single clinical claim against patient evidence."""
+        """Evaluate a condition tree node recursively."""
+        node_type = (node.type or "").upper()
 
-        if claim.claim_type == "myocardial_injury":
-            return self._check_myocardial_injury(case, claim, knowledge_base, condition_checks, reasons)
-        elif claim.claim_type == "ami_diagnosis":
-            return self._check_ami(case, claim, knowledge_base, condition_checks, reasons)
-        elif claim.claim_type == "stemi_criteria":
-            return self._check_stemi(case, claim, condition_checks, reasons)
-        elif claim.claim_type == "nstemi_criteria":
-            return self._check_nstemi(case, claim, knowledge_base, condition_checks, reasons)
-        elif claim.claim_type == "rapid_rule_in":
-            return self._check_myocardial_injury(case, claim, knowledge_base, condition_checks, reasons)
-        else:
-            return ConditionResult.UNKNOWN
+        if node_type == "AND":
+            any_unknown = False
+            for child in (node.children or []):
+                res = self._evaluate_condition_node(
+                    child, case, claim, knowledge_base, condition_checks, reasons
+                )
+                if res == ConditionResult.FAIL_RESULT:
+                    return ConditionResult.FAIL_RESULT
+                if res == ConditionResult.UNKNOWN:
+                    any_unknown = True
+            return ConditionResult.UNKNOWN if any_unknown else ConditionResult.PASS_RESULT
 
-    def _check_myocardial_injury(
-        self, case, claim, knowledge_base, condition_checks, reasons
-    ) -> ConditionResult:
-        """Check troponin against assay reference for myocardial injury."""
-        if not case.troponin or case.troponin.value is None:
-            return ConditionResult.UNKNOWN
+        elif node_type == "OR":
+            any_unknown = False
+            for child in (node.children or []):
+                res = self._evaluate_condition_node(
+                    child, case, claim, knowledge_base, condition_checks, reasons
+                )
+                if res == ConditionResult.PASS_RESULT:
+                    return ConditionResult.PASS_RESULT
+                if res == ConditionResult.UNKNOWN:
+                    any_unknown = True
+            return ConditionResult.UNKNOWN if any_unknown else ConditionResult.FAIL_RESULT
 
-        if case.troponin.confidence_level == ExtractionConfidenceLevel.UNKNOWN:
-            return ConditionResult.UNKNOWN
-
-        # Get assay reference
-        assay_ref = None
-        if case.troponin.assay:
-            assay_ref = knowledge_base.get_assay_reference(case.troponin.assay)
-            if not assay_ref:
-                condition_checks.append(ConditionCheck(
-                    condition_name=f"assay_match_{claim.claim_id}",
-                    result=ConditionResult.UNKNOWN,
-                    reason=f"Assay '{case.troponin.assay}' not found in reference database",
-                    evidence_used="troponin",
-                ))
-                reasons.append(f"Troponin assay '{case.troponin.assay}' not in reference database — comparison result is UNKNOWN")
+        elif node_type == "NOT":
+            if not node.children:
                 return ConditionResult.UNKNOWN
-        else:
-            # Assay unknown → reference comparison is UNKNOWN, never a guess
-            condition_checks.append(ConditionCheck(
-                condition_name=f"assay_known_{claim.claim_id}",
-                result=ConditionResult.UNKNOWN,
-                reason="Troponin assay unknown — cannot determine reference limit",
-                evidence_used="troponin",
-            ))
-            reasons.append("Troponin assay is unknown — reference comparison is UNKNOWN, not a guess")
+            res = self._evaluate_condition_node(
+                node.children[0], case, claim, knowledge_base, condition_checks, reasons
+            )
+            if res == ConditionResult.PASS_RESULT:
+                return ConditionResult.FAIL_RESULT
+            if res == ConditionResult.FAIL_RESULT:
+                return ConditionResult.PASS_RESULT
             return ConditionResult.UNKNOWN
 
-        # Compare against 99th percentile URL
-        sex = case.clinical_history.sex.lower() if (case.clinical_history and case.clinical_history.sex) else None
-        if sex in ("female", "f"):
-            url_value = assay_ref.sex_specific_limits.get("female")
-        elif sex in ("male", "m"):
-            url_value = assay_ref.sex_specific_limits.get("male")
-        else:
-            # Use higher (male) limit as conservative default when sex unknown
-            url_value = assay_ref.sex_specific_limits.get("male")
+        elif node_type == "CONDITION":
+            return self._evaluate_leaf_condition(
+                node, case, claim, knowledge_base, condition_checks, reasons
+            )
 
-        if url_value is None:
-            condition_checks.append(ConditionCheck(
-                condition_name=f"reference_limit_{claim.claim_id}",
-                result=ConditionResult.UNKNOWN,
-                reason="No reference limit available for this assay/sex combination",
-                evidence_used="troponin",
-            ))
-            return ConditionResult.UNKNOWN
-
-        # Check if troponin is above 99th percentile
-        troponin_elevated = case.troponin.value > url_value
-
-        condition_checks.append(ConditionCheck(
-            condition_name=f"troponin_vs_99th_{claim.claim_id}",
-            result=ConditionResult.PASS_RESULT if troponin_elevated else ConditionResult.FAIL_RESULT,
-            reason=(
-                f"Troponin {case.troponin.value} {case.troponin.unit} is "
-                f"{'above' if troponin_elevated else 'at or below'} 99th percentile URL "
-                f"of {url_value} {assay_ref.unit} ({assay_ref.assay_name})"
-            ),
-            evidence_used="troponin",
-            source_reference=assay_ref.source_document,
-        ))
-
-        if not troponin_elevated:
-            return ConditionResult.FAIL_RESULT
-
-        # Check for rise and/or fall pattern (requires serial)
-        for condition in claim.conditions:
-            if condition.requires_serial:
-                if case.troponin.serial_values and len(case.troponin.serial_values) >= 1:
-                    has_rise_fall = self._check_rise_fall_pattern(
-                        case.troponin.value, case.troponin.serial_values
-                    )
-                    condition_checks.append(ConditionCheck(
-                        condition_name=f"rise_fall_pattern_{claim.claim_id}",
-                        result=ConditionResult.PASS_RESULT if has_rise_fall else ConditionResult.FAIL_RESULT,
-                        reason=(
-                            "Rise and/or fall pattern detected in serial troponin values"
-                            if has_rise_fall
-                            else "No significant rise/fall pattern in serial troponin values"
-                        ),
-                        evidence_used="troponin_serial",
-                    ))
-                    if not has_rise_fall:
-                        return ConditionResult.FAIL_RESULT
-                else:
-                    # No serial data — cannot assess rise/fall
-                    condition_checks.append(ConditionCheck(
-                        condition_name=f"serial_data_{claim.claim_id}",
-                        result=ConditionResult.UNKNOWN,
-                        reason="Serial troponin data not available — cannot assess rise/fall pattern",
-                        evidence_used="troponin",
-                    ))
-                    return ConditionResult.UNKNOWN
-
-        reasons.append(f"Troponin elevated above 99th percentile for {assay_ref.assay_name}")
-        return ConditionResult.PASS_RESULT
-
-    def _check_ami(self, case, claim, knowledge_base, condition_checks, reasons) -> ConditionResult:
-        """Check AMI Type 1: myocardial injury + acute ischemia evidence."""
-        # First check myocardial injury
-        injury_result = self._check_myocardial_injury(case, claim, knowledge_base, condition_checks, reasons)
-        if injury_result != ConditionResult.PASS_RESULT:
-            return injury_result
-
-        # Then check for clinical ischemia evidence
-        has_ischemia = False
-        ischemia_evidence = []
-
-        if case.symptoms and case.symptoms.chest_pain:
-            has_ischemia = True
-            ischemia_evidence.append("ischemic symptoms (chest pain)")
-
-        if case.ecg:
-            if case.ecg.st_elevation:
-                has_ischemia = True
-                ischemia_evidence.append("ST elevation on ECG")
-            if case.ecg.st_depression:
-                has_ischemia = True
-                ischemia_evidence.append("ST depression on ECG")
-            if case.ecg.q_waves:
-                has_ischemia = True
-                ischemia_evidence.append("new Q waves on ECG")
-
-        if case.imaging and case.imaging.wall_motion_abnormality:
-            has_ischemia = True
-            ischemia_evidence.append("new wall motion abnormality on imaging")
-
-        condition_checks.append(ConditionCheck(
-            condition_name=f"clinical_ischemia_{claim.claim_id}",
-            result=ConditionResult.PASS_RESULT if has_ischemia else ConditionResult.FAIL_RESULT,
-            reason=(
-                f"Clinical ischemia evidence present: {', '.join(ischemia_evidence)}"
-                if has_ischemia
-                else "No clinical ischemia evidence found (symptoms, ECG changes, or imaging)"
-            ),
-        ))
-
-        if has_ischemia:
-            reasons.append(f"Clinical ischemia evidence: {', '.join(ischemia_evidence)}")
-            return ConditionResult.PASS_RESULT
-        return ConditionResult.FAIL_RESULT
-
-    def _check_stemi(self, case, claim, condition_checks, reasons) -> ConditionResult:
-        """Check STEMI criteria: ST elevation in 2+ contiguous leads."""
-        if not case.ecg:
-            return ConditionResult.UNKNOWN
-
-        if case.ecg.confidence_level == ExtractionConfidenceLevel.UNKNOWN:
-            return ConditionResult.UNKNOWN
-
-        if case.ecg.st_elevation is True:
-            condition_checks.append(ConditionCheck(
-                condition_name=f"stemi_ecg_{claim.claim_id}",
-                result=ConditionResult.PASS_RESULT,
-                reason="ST elevation pattern identified on ECG",
-                evidence_used="ecg",
-            ))
-            reasons.append("STEMI pattern: ST elevation on ECG")
-            return ConditionResult.PASS_RESULT
-        elif case.ecg.st_elevation is False:
-            condition_checks.append(ConditionCheck(
-                condition_name=f"stemi_ecg_{claim.claim_id}",
-                result=ConditionResult.FAIL_RESULT,
-                reason="No ST elevation on ECG",
-                evidence_used="ecg",
-            ))
-            return ConditionResult.FAIL_RESULT
-        else:
-            return ConditionResult.UNKNOWN
-
-    def _check_nstemi(self, case, claim, knowledge_base, condition_checks, reasons) -> ConditionResult:
-        """Check NSTEMI: myocardial injury + ischemia without ST elevation."""
-        injury_result = self._check_myocardial_injury(case, claim, knowledge_base, condition_checks, reasons)
-        if injury_result != ConditionResult.PASS_RESULT:
-            return injury_result
-
-        # Must NOT have ST elevation
-        if case.ecg and case.ecg.st_elevation is True:
-            condition_checks.append(ConditionCheck(
-                condition_name=f"no_st_elevation_{claim.claim_id}",
-                result=ConditionResult.FAIL_RESULT,
-                reason="ST elevation present — this is STEMI, not NSTEMI",
-                evidence_used="ecg",
-            ))
-            return ConditionResult.FAIL_RESULT
-
-        # Must have ischemia evidence
-        has_ischemia = (
-            (case.symptoms and case.symptoms.chest_pain) or
-            (case.ecg and case.ecg.st_depression) or
-            (case.imaging and case.imaging.wall_motion_abnormality)
-        )
-
-        if has_ischemia:
-            reasons.append("NSTEMI pattern: elevated troponin with ischemia, no ST elevation")
-            return ConditionResult.PASS_RESULT
         return ConditionResult.UNKNOWN
 
-    def _check_rise_fall_pattern(self, baseline_value: float, serial_values: List[dict]) -> bool:
-        """Check for significant rise and/or fall pattern in serial troponin."""
+    def _evaluate_leaf_condition(
+        self,
+        node: ConditionNode,
+        case: PatientCase,
+        claim: StructuredClaim,
+        knowledge_base: MedicalKnowledgeBase,
+        condition_checks: List[ConditionCheck],
+        reasons: List[str],
+    ) -> ConditionResult:
+        """Evaluate an individual leaf condition check."""
+        check = (node.check or "").upper()
+
+        # ── Leaf Check: TROPONIN_ABOVE_99TH ──────────────────────────────
+        if check == "TROPONIN_ABOVE_99TH":
+            if not case.troponin or case.troponin.value is None:
+                return ConditionResult.UNKNOWN
+            if case.troponin.confidence_level == ExtractionConfidenceLevel.UNKNOWN:
+                return ConditionResult.UNKNOWN
+
+            assay_ref = None
+            if case.troponin.assay:
+                assay_ref = knowledge_base.get_assay_reference(case.troponin.assay)
+                if not assay_ref:
+                    assay_ref = self.claim_registry.get_assay_reference_fuzzy(case.troponin.assay)
+                if not assay_ref:
+                    condition_checks.append(ConditionCheck(
+                        condition_name=f"assay_match_{claim.claim_id}",
+                        result=ConditionResult.UNKNOWN,
+                        reason=f"Assay '{case.troponin.assay}' not found in reference database",
+                        evidence_used="troponin",
+                    ))
+                    reasons.append(f"Troponin assay '{case.troponin.assay}' not in reference database — comparison result is UNKNOWN")
+                    return ConditionResult.UNKNOWN
+            else:
+                condition_checks.append(ConditionCheck(
+                    condition_name=f"assay_known_{claim.claim_id}",
+                    result=ConditionResult.UNKNOWN,
+                    reason="Troponin assay unknown — cannot determine reference limit",
+                    evidence_used="troponin",
+                ))
+                reasons.append("Troponin assay is unknown — reference comparison is UNKNOWN, not a guess")
+                return ConditionResult.UNKNOWN
+
+            # Sex-specific 99th percentile URL
+            sex = case.clinical_history.sex.lower() if (case.clinical_history and case.clinical_history.sex) else None
+            if sex in ("female", "f"):
+                url_value = assay_ref.sex_specific_limits.get("female")
+            elif sex in ("male", "m"):
+                url_value = assay_ref.sex_specific_limits.get("male")
+            else:
+                url_value = assay_ref.sex_specific_limits.get("male")
+
+            if url_value is None:
+                condition_checks.append(ConditionCheck(
+                    condition_name=f"reference_limit_{claim.claim_id}",
+                    result=ConditionResult.UNKNOWN,
+                    reason="No reference limit available for this assay/sex combination",
+                    evidence_used="troponin",
+                ))
+                return ConditionResult.UNKNOWN
+
+            troponin_elevated = case.troponin.value > url_value
+            condition_checks.append(ConditionCheck(
+                condition_name=f"troponin_vs_99th_{claim.claim_id}",
+                result=ConditionResult.PASS_RESULT if troponin_elevated else ConditionResult.FAIL_RESULT,
+                reason=(
+                    f"Troponin {case.troponin.value} {case.troponin.unit} is "
+                    f"{'above' if troponin_elevated else 'at or below'} 99th percentile URL "
+                    f"of {url_value} {assay_ref.unit} ({assay_ref.assay_name})"
+                ),
+                evidence_used="troponin",
+                source_reference=assay_ref.source_document,
+            ))
+
+            if troponin_elevated:
+                reasons.append(f"Troponin elevated above 99th percentile for {assay_ref.assay_name}")
+                return ConditionResult.PASS_RESULT
+            return ConditionResult.FAIL_RESULT
+
+        # ── Leaf Check: SERIAL_RISE_FALL ─────────────────────────────────
+        elif check == "SERIAL_RISE_FALL":
+            if not case.troponin or case.troponin.value is None:
+                return ConditionResult.UNKNOWN
+
+            if case.troponin.serial_values and len(case.troponin.serial_values) >= 1:
+                min_change = (node.params or {}).get("min_relative_change", 0.20)
+                has_rise_fall = self._has_relative_change(
+                    case.troponin.value, case.troponin.serial_values, min_change
+                )
+                condition_checks.append(ConditionCheck(
+                    condition_name=f"rise_fall_pattern_{claim.claim_id}",
+                    result=ConditionResult.PASS_RESULT if has_rise_fall else ConditionResult.FAIL_RESULT,
+                    reason=(
+                        "Rise and/or fall pattern detected in serial troponin values"
+                        if has_rise_fall
+                        else "No significant rise/fall pattern in serial troponin values"
+                    ),
+                    evidence_used="troponin_serial",
+                ))
+                return ConditionResult.PASS_RESULT if has_rise_fall else ConditionResult.FAIL_RESULT
+            else:
+                condition_checks.append(ConditionCheck(
+                    condition_name=f"serial_data_{claim.claim_id}",
+                    result=ConditionResult.UNKNOWN,
+                    reason="Serial troponin data not available — cannot assess rise/fall pattern",
+                    evidence_used="troponin",
+                ))
+                return ConditionResult.UNKNOWN
+
+        # ── Leaf Check: PRESENT ──────────────────────────────────────────
+        elif check == "PRESENT":
+            evidence_type = (node.evidence_type or "").lower()
+            field_name = node.field
+
+            component = getattr(case, evidence_type, None)
+            if not component:
+                return ConditionResult.UNKNOWN
+            if getattr(component, "confidence_level", None) == ExtractionConfidenceLevel.UNKNOWN:
+                return ConditionResult.UNKNOWN
+
+            val = getattr(component, field_name, None) if field_name else True
+            if val is True:
+                condition_checks.append(ConditionCheck(
+                    condition_name=f"{evidence_type}_{field_name}_{claim.claim_id}",
+                    result=ConditionResult.PASS_RESULT,
+                    reason=f"{evidence_type} {field_name} is present/positive",
+                    evidence_used=evidence_type,
+                ))
+                return ConditionResult.PASS_RESULT
+            elif val is False:
+                condition_checks.append(ConditionCheck(
+                    condition_name=f"{evidence_type}_{field_name}_{claim.claim_id}",
+                    result=ConditionResult.FAIL_RESULT,
+                    reason=f"{evidence_type} {field_name} is absent/negative",
+                    evidence_used=evidence_type,
+                ))
+                return ConditionResult.FAIL_RESULT
+            elif val is not None:
+                condition_checks.append(ConditionCheck(
+                    condition_name=f"{evidence_type}_{field_name}_{claim.claim_id}",
+                    result=ConditionResult.PASS_RESULT,
+                    reason=f"{evidence_type} {field_name} is present: {val}",
+                    evidence_used=evidence_type,
+                ))
+                return ConditionResult.PASS_RESULT
+            else:
+                return ConditionResult.UNKNOWN
+
+        # ── Leaf Check: NOT_PRESENT ──────────────────────────────────────
+        elif check == "NOT_PRESENT":
+            evidence_type = (node.evidence_type or "").lower()
+            field_name = node.field
+            component = getattr(case, evidence_type, None)
+            if not component:
+                return ConditionResult.PASS_RESULT
+            val = getattr(component, field_name, None) if field_name else False
+            if val is False or val is None:
+                return ConditionResult.PASS_RESULT
+            return ConditionResult.FAIL_RESULT
+
+        return ConditionResult.UNKNOWN
+
+    def _has_relative_change(self, baseline_value: float, serial_values: List[dict], min_change: float = 0.20) -> bool:
+        """Generic relative change calculator for serial values."""
         if not serial_values:
             return False
-
         values = [baseline_value] + [sv.get("value", 0) for sv in serial_values if sv.get("value") is not None]
         if len(values) < 2:
             return False
-
-        # Check for rise: any subsequent value > 20% higher than baseline
-        # or fall: any subsequent value > 20% lower than peak
         max_val = max(values)
         min_val = min(values)
-
         if max_val == 0:
             return False
-
-        # Significant change threshold: 20% relative change
         relative_change = (max_val - min_val) / max_val
-        return relative_change >= 0.20
+        return relative_change >= min_change
 
     def _determine_state(
         self,
@@ -544,31 +597,49 @@ class ReasoningEngine:
         all_missing: List[MissingInformation],
         condition_checks: List[ConditionCheck],
         reasons: List[str],
+        passed_claims: Optional[List[StructuredClaim]] = None,
+        failed_claims: Optional[List[StructuredClaim]] = None,
     ) -> EvidenceState:
-        """Apply the deterministic state logic (§3.6).
+        """Apply deterministic state logic (§3.6) with rich unknown & weaker claim states.
 
-        Priority ordering for state determination:
+        Priority ordering:
         1. CONFLICTING (if sources materially disagree)
         2. QUESTIONABLE (if critical evidence has unacceptable quality)
         3. INCOMPLETE / ADDITIONAL_INFORMATION_REQUIRED (if critical info missing)
-        4. SUFFICIENT (if all conditions pass)
-        5. NO_RELIABLE_CONCLUSION (fallback)
+        4. WEAKER_CLAIM_ONLY (if evidence supports only a weaker claim)
+        5. SUFFICIENT (if all conditions pass)
+        6. NO_RELIABLE_CONCLUSION (fallback)
         """
-
-        # Check for conflicts first
+        # 1. Conflict check
         if conflict_status == ConflictStatus.CONFLICT:
             reasons.append("State: CONFLICTING — applicable sources materially disagree")
             return EvidenceState.CONFLICTING
 
-        # Check for questionable evidence
+        # 2. Questionable evidence check
         if has_questionable_evidence:
             reasons.append("State: QUESTIONABLE — critical evidence has unacceptable quality/provenance")
             return EvidenceState.QUESTIONABLE
 
-        # Check for missing critical information
-        required_missing = [m for m in all_missing if m.criticality == "REQUIRED"]
-        askable_missing = [m for m in required_missing if m.askable]
+        # 3. Missing critical information & Weaker Claim Check
+        weaker_claim_eligible = False
+        if passed_claims:
+            passed_ranks = [c.strength_rank for c in passed_claims]
+            failed_ranks = [c.strength_rank for c in (failed_claims or [])]
+            if max(passed_ranks) == 1 and any(r > 1 for r in failed_ranks):
+                weaker_claim_eligible = True
 
+        required_missing = [m for m in all_missing if m.criticality == "REQUIRED"]
+        # If weaker claim is satisfied and missing info is only for the stronger claim
+        if weaker_claim_eligible:
+            weaker_missing = [m for m in required_missing if "troponin" in m.field.lower() or "serial" in m.field.lower()]
+            if not weaker_missing:
+                reasons.append(
+                    "State: WEAKER_CLAIM_ONLY — evidence supports a weaker claim (e.g. myocardial injury) "
+                    "but cannot establish the primary diagnosis (acute myocardial infarction)"
+                )
+                return EvidenceState.WEAKER_CLAIM_ONLY
+
+        askable_missing = [m for m in required_missing if m.askable]
         if required_missing:
             if askable_missing:
                 reasons.append(
@@ -580,7 +651,15 @@ class ReasoningEngine:
                 reasons.append("State: INCOMPLETE — required evidence is missing")
                 return EvidenceState.INCOMPLETE
 
-        # Check if all conditions pass → SUFFICIENT
+        # 4. Weaker claim check (when no missing info)
+        if weaker_claim_eligible:
+            reasons.append(
+                "State: WEAKER_CLAIM_ONLY — evidence supports a weaker claim (e.g. myocardial injury) "
+                "but cannot establish the primary diagnosis (acute myocardial infarction)"
+            )
+            return EvidenceState.WEAKER_CLAIM_ONLY
+
+        # 5. Check if all conditions pass → SUFFICIENT
         if (generic_result == ConditionResult.PASS_RESULT
                 and criteria_result == ConditionResult.PASS_RESULT
                 and criteria_met == ConditionResult.PASS_RESULT
@@ -588,9 +667,8 @@ class ReasoningEngine:
             reasons.append("State: SUFFICIENT — all evidence conditions satisfied")
             return EvidenceState.SUFFICIENT
 
-        # If criteria result is UNKNOWN (not FAIL) and we have some evidence
+        # 6. If criteria result is UNKNOWN (not FAIL)
         if criteria_met == ConditionResult.UNKNOWN:
-            # Check if there's anything askable
             if askable_missing:
                 reasons.append("State: ADDITIONAL_INFORMATION_REQUIRED — specific items would help")
                 return EvidenceState.ADDITIONAL_INFORMATION_REQUIRED
@@ -601,7 +679,7 @@ class ReasoningEngine:
                 )
                 return EvidenceState.NO_RELIABLE_CONCLUSION
 
-        # Fallback
+        # 7. Fallback
         reasons.append(
             "State: NO_RELIABLE_CONCLUSION — the available evidence cannot establish "
             "the requested claim with no further recoverable action"

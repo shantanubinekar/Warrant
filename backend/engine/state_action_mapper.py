@@ -49,6 +49,16 @@ class StateActionMapper:
             "No reliable conclusion can be reached. Escalating to human clinician for review.",
             True,
         ),
+        EvidenceState.WEAKER_CLAIM_ONLY: (
+            ActionType.RETURN_CONCLUSION,
+            "Evidence supports only a weaker claim. Primary diagnosis cannot be established.",
+            False,
+        ),
+        EvidenceState.RULE_NOT_AVAILABLE: (
+            ActionType.WITHHOLD_CONCLUSION,
+            "No validated clinical rule or guideline entry is available for this condition in the knowledge base.",
+            False,
+        ),
     }
 
     def map_state_to_action(

@@ -8,7 +8,7 @@ into a shared schema before they can be compared.
 
 from pydantic import BaseModel
 from enum import Enum
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 
 
 class ClassOfRecommendation(str, Enum):
@@ -62,6 +62,20 @@ class MedicalKnowledgeSource(BaseModel):
     applicable_context: Optional[str] = None
 
 
+class ConditionNode(BaseModel):
+    """Condition tree node for generic claim evaluation.
+
+    Supports AND/OR/NOT compound logic and leaf CONDITION checks.
+    Leaf check types: TROPONIN_ABOVE_99TH, SERIAL_RISE_FALL, PRESENT, NOT_PRESENT.
+    """
+    type: str  # "AND", "OR", "NOT", "CONDITION"
+    children: Optional[List["ConditionNode"]] = None
+    check: Optional[str] = None  # for CONDITION leaves
+    evidence_type: Optional[str] = None  # e.g. "troponin", "ecg"
+    field: Optional[str] = None  # e.g. "chest_pain", "st_elevation"
+    params: Optional[Dict[str, Any]] = None
+
+
 class StructuredClaim(BaseModel):
     """A normalized medical claim derived from one or more sources."""
     claim_id: str
@@ -72,6 +86,10 @@ class StructuredClaim(BaseModel):
     population: str
     required_evidence: List[str]
     claim_text: str
+    condition_tree: Optional[ConditionNode] = None
+    strength_rank: int = 1
+    what_this_supports: Optional[str] = None
+    what_this_cannot_establish: Optional[str] = None
 
 
 class AssayReference(BaseModel):
@@ -103,3 +121,7 @@ class SourceAssessment(BaseModel):
     population_match: str  # MATCHED, PARTIAL_MATCH, MISMATCH, UNKNOWN
     staleness_years: Optional[float] = None
     notes: Optional[str] = None
+
+
+ConditionNode.model_rebuild()
+StructuredClaim.model_rebuild()

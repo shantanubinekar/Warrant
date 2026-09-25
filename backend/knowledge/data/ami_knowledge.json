@@ -1,0 +1,265 @@
+{
+  "domain": "ami",
+  "version": "1.0.0",
+  "assay_references": [
+    {
+      "assay_name": "Abbott Architect STAT High Sensitive Troponin-I",
+      "manufacturer": "Abbott Diagnostics",
+      "unit": "ng/L",
+      "sex_specific_limits": {"male": 34.2, "female": 15.6},
+      "percentile_99_url": "https://www.corelaboratory.abbott/int/en/offerings/segments/cardiac/architect-stat-high-sensitive-troponin-i",
+      "source_document": "Abbott Architect STAT High Sensitive Troponin-I Package Insert",
+      "version_date": "2023",
+      "provenance": "Manufacturer package insert, referenced 99th percentile URL values"
+    }
+  ],
+  "sources": [
+    {
+      "source_id": "udmi_2018_injury",
+      "source_name": "Fourth Universal Definition of Myocardial Infarction (2018)",
+      "version_date": "2018",
+      "authority": "ESC/ACC/AHA/WHF",
+      "class_of_recommendation": "I",
+      "level_of_evidence": "B-NR",
+      "evidence_tier": "GUIDELINE",
+      "claim": "myocardial_injury_criterion",
+      "condition": {
+        "marker": "cardiac_troponin",
+        "comparison": ">",
+        "reference": "assay_specific_99th_percentile_URL",
+        "reference_value": null,
+        "requires_serial": true,
+        "serial_timeframe_hours": 3.0
+      },
+      "population": "adult, suspected acute cardiac condition",
+      "scope": "Definition of myocardial injury",
+      "provenance": "Thygesen K, et al. Fourth Universal Definition of Myocardial Infarction (2018). Circulation. 2018;138(20):e231-e270.",
+      "licensing_verified": false,
+      "applicable_context": "acute_cardiac_assessment"
+    },
+    {
+      "source_id": "udmi_2018_ami_type1",
+      "source_name": "Fourth Universal Definition of Myocardial Infarction (2018)",
+      "version_date": "2018",
+      "authority": "ESC/ACC/AHA/WHF",
+      "class_of_recommendation": "I",
+      "level_of_evidence": "B-NR",
+      "evidence_tier": "GUIDELINE",
+      "claim": "ami_type1_criterion",
+      "condition": {
+        "marker": "cardiac_troponin_plus_ischemia",
+        "comparison": "rise_and_fall",
+        "reference": "assay_specific_99th_percentile_URL_plus_clinical_ischemia",
+        "reference_value": null,
+        "requires_serial": true,
+        "serial_timeframe_hours": 3.0
+      },
+      "population": "adult, suspected ACS",
+      "scope": "Diagnosis of acute myocardial infarction Type 1",
+      "provenance": "Thygesen K, et al. Fourth Universal Definition of Myocardial Infarction (2018). Circulation. 2018;138(20):e231-e270.",
+      "licensing_verified": false,
+      "applicable_context": "acute_cardiac_assessment"
+    },
+    {
+      "source_id": "acc_aha_2021_stemi",
+      "source_name": "2021 ACC/AHA/SCAI Guideline for Coronary Artery Revascularization",
+      "version_date": "2021",
+      "authority": "ACC/AHA/SCAI",
+      "class_of_recommendation": "I",
+      "level_of_evidence": "B-R",
+      "evidence_tier": "GUIDELINE",
+      "claim": "stemi_criteria",
+      "condition": {
+        "marker": "st_elevation",
+        "comparison": ">=",
+        "reference": "st_elevation_in_2_or_more_contiguous_leads",
+        "reference_value": null,
+        "requires_serial": false,
+        "serial_timeframe_hours": null
+      },
+      "population": "adult, suspected STEMI",
+      "scope": "STEMI identification for emergent reperfusion",
+      "provenance": "Lawton JS, et al. 2021 ACC/AHA/SCAI Guideline for Coronary Artery Revascularization. Circulation. 2022;145(3):e18-e114.",
+      "licensing_verified": false,
+      "applicable_context": "acute_cardiac_assessment"
+    },
+    {
+      "source_id": "esc_2020_01h",
+      "source_name": "2020 ESC Guidelines for NSTE-ACS (0h/1h Algorithm)",
+      "version_date": "2020",
+      "authority": "ESC",
+      "class_of_recommendation": "I",
+      "level_of_evidence": "B-NR",
+      "evidence_tier": "GUIDELINE",
+      "claim": "serial_troponin_protocol",
+      "condition": {
+        "marker": "cardiac_troponin",
+        "comparison": ">=",
+        "reference": "assay_specific_rule_in_cutoff",
+        "reference_value": null,
+        "requires_serial": true,
+        "serial_timeframe_hours": 1.0
+      },
+      "population": "adult, suspected NSTE-ACS",
+      "scope": "Rapid rule-in/rule-out using 0h/1h hs-cTn algorithm",
+      "provenance": "Collet JP, et al. 2020 ESC Guidelines for the management of acute coronary syndromes in patients presenting without persistent ST-segment elevation. Eur Heart J. 2021;42(14):1289-1367.",
+      "licensing_verified": false,
+      "applicable_context": "acute_cardiac_assessment"
+    },
+    {
+      "source_id": "esc_2015_nsteacs",
+      "source_name": "2015 ESC Guidelines for NSTE-ACS (Older, 0h/3h Algorithm)",
+      "version_date": "2015",
+      "authority": "ESC",
+      "class_of_recommendation": "I",
+      "level_of_evidence": "B-NR",
+      "evidence_tier": "GUIDELINE",
+      "claim": "serial_troponin_protocol",
+      "condition": {
+        "marker": "cardiac_troponin",
+        "comparison": "rise_and_fall",
+        "reference": "assay_specific_99th_percentile_URL_with_20pct_delta",
+        "reference_value": null,
+        "requires_serial": true,
+        "serial_timeframe_hours": 3.0
+      },
+      "population": "adult, suspected NSTE-ACS",
+      "scope": "Serial troponin assessment using 0h/3h algorithm",
+      "provenance": "Roffi M, et al. 2015 ESC Guidelines for the management of acute coronary syndromes in patients presenting without persistent ST-segment elevation. Eur Heart J. 2016;37(3):267-315.",
+      "licensing_verified": false,
+      "applicable_context": "acute_cardiac_assessment"
+    }
+  ],
+  "claims": [
+    {
+      "claim_id": "myocardial_injury",
+      "claim_type": "myocardial_injury",
+      "description": "Cardiac troponin above 99th percentile URL with rise and/or fall pattern",
+      "claim_text": "Myocardial injury is defined as detection of elevated cardiac troponin values above the 99th percentile upper reference limit (URL) with at least one value rising and/or falling.",
+      "population": "adult, suspected acute cardiac condition",
+      "required_evidence": ["troponin", "timing"],
+      "supporting_sources": ["udmi_2018_injury"],
+      "strength_rank": 1,
+      "what_this_supports": "Detection of myocardial injury",
+      "what_this_cannot_establish": "Acute myocardial infarction — requires additional ischemia evidence",
+      "conditions": [
+        {"marker": "cardiac_troponin", "comparison": ">", "reference": "assay_specific_99th_percentile_URL", "requires_serial": true, "serial_timeframe_hours": 3.0}
+      ],
+      "condition_tree": {
+        "type": "AND",
+        "children": [
+          {"type": "CONDITION", "check": "TROPONIN_ABOVE_99TH", "evidence_type": "troponin"},
+          {"type": "CONDITION", "check": "SERIAL_RISE_FALL", "evidence_type": "troponin", "params": {"min_relative_change": 0.20}}
+        ]
+      }
+    },
+    {
+      "claim_id": "ami_type1",
+      "claim_type": "ami_diagnosis",
+      "description": "Acute MI Type 1: myocardial injury plus clinical evidence of acute ischemia",
+      "claim_text": "Type 1 AMI requires detection of rise and/or fall of cardiac troponin with at least one value above the 99th percentile URL, AND at least one of: symptoms of acute myocardial ischemia, new ischemic ECG changes, development of pathological Q waves, imaging evidence of new loss of viable myocardium or new regional wall motion abnormality, or identification of coronary thrombus.",
+      "population": "adult, suspected ACS",
+      "required_evidence": ["troponin", "timing", "symptoms", "ecg"],
+      "supporting_sources": ["udmi_2018_ami_type1"],
+      "strength_rank": 3,
+      "what_this_supports": "Diagnosis of Type 1 acute myocardial infarction",
+      "what_this_cannot_establish": "Type 2 MI, demand ischemia, or non-ischemic myocardial injury",
+      "conditions": [
+        {"marker": "cardiac_troponin", "comparison": ">", "reference": "assay_specific_99th_percentile_URL", "requires_serial": true, "serial_timeframe_hours": 3.0},
+        {"marker": "clinical_ischemia", "comparison": "==", "reference": "at_least_one_of_symptoms_ecg_imaging_angio"}
+      ],
+      "condition_tree": {
+        "type": "AND",
+        "children": [
+          {"type": "CONDITION", "check": "TROPONIN_ABOVE_99TH", "evidence_type": "troponin"},
+          {"type": "CONDITION", "check": "SERIAL_RISE_FALL", "evidence_type": "troponin", "params": {"min_relative_change": 0.20}},
+          {
+            "type": "OR",
+            "children": [
+              {"type": "CONDITION", "check": "PRESENT", "evidence_type": "symptoms", "field": "chest_pain"},
+              {"type": "CONDITION", "check": "PRESENT", "evidence_type": "ecg", "field": "st_elevation"},
+              {"type": "CONDITION", "check": "PRESENT", "evidence_type": "ecg", "field": "st_depression"},
+              {"type": "CONDITION", "check": "PRESENT", "evidence_type": "ecg", "field": "q_waves"},
+              {"type": "CONDITION", "check": "PRESENT", "evidence_type": "imaging", "field": "wall_motion_abnormality"}
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "claim_id": "stemi_criteria",
+      "claim_type": "stemi_criteria",
+      "description": "STEMI: ST elevation in 2+ contiguous leads",
+      "claim_text": "STEMI is identified by new ST-elevation at the J point in two or more contiguous leads.",
+      "population": "adult, suspected STEMI",
+      "required_evidence": ["ecg"],
+      "supporting_sources": ["acc_aha_2021_stemi"],
+      "strength_rank": 3,
+      "what_this_supports": "STEMI identification for emergent reperfusion",
+      "what_this_cannot_establish": "NSTEMI or other ACS subtypes",
+      "conditions": [
+        {"marker": "st_elevation", "comparison": ">=", "reference": "st_elevation_in_2_or_more_contiguous_leads"}
+      ],
+      "condition_tree": {
+        "type": "CONDITION",
+        "check": "PRESENT",
+        "evidence_type": "ecg",
+        "field": "st_elevation"
+      }
+    },
+    {
+      "claim_id": "nstemi_criteria",
+      "claim_type": "nstemi_criteria",
+      "description": "NSTEMI: myocardial injury plus ischemia without persistent ST elevation",
+      "claim_text": "NSTEMI is diagnosed when there is evidence of myocardial injury (troponin rise/fall above 99th percentile URL) with clinical evidence of ischemia, but WITHOUT persistent ST-segment elevation.",
+      "population": "adult, suspected NSTE-ACS",
+      "required_evidence": ["troponin", "ecg", "symptoms", "timing"],
+      "supporting_sources": ["udmi_2018_ami_type1"],
+      "strength_rank": 3,
+      "what_this_supports": "NSTEMI diagnosis",
+      "what_this_cannot_establish": "STEMI or non-ACS causes of troponin elevation",
+      "conditions": [
+        {"marker": "cardiac_troponin", "comparison": ">", "reference": "assay_specific_99th_percentile_URL", "requires_serial": true, "serial_timeframe_hours": 3.0},
+        {"marker": "clinical_ischemia_without_st_elevation", "comparison": "==", "reference": "ischemia_without_persistent_st_elevation"}
+      ],
+      "condition_tree": {
+        "type": "AND",
+        "children": [
+          {"type": "CONDITION", "check": "TROPONIN_ABOVE_99TH", "evidence_type": "troponin"},
+          {"type": "CONDITION", "check": "SERIAL_RISE_FALL", "evidence_type": "troponin", "params": {"min_relative_change": 0.20}},
+          {"type": "NOT", "children": [{"type": "CONDITION", "check": "PRESENT", "evidence_type": "ecg", "field": "st_elevation"}]},
+          {
+            "type": "OR",
+            "children": [
+              {"type": "CONDITION", "check": "PRESENT", "evidence_type": "symptoms", "field": "chest_pain"},
+              {"type": "CONDITION", "check": "PRESENT", "evidence_type": "ecg", "field": "st_depression"},
+              {"type": "CONDITION", "check": "PRESENT", "evidence_type": "imaging", "field": "wall_motion_abnormality"}
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "claim_id": "rapid_rule_in",
+      "claim_type": "rapid_rule_in",
+      "description": "Rapid rule-in / serial troponin testing protocol",
+      "claim_text": "Serial troponin timing algorithm for rapid assessment.",
+      "population": "adult, suspected NSTE-ACS",
+      "required_evidence": ["troponin", "timing"],
+      "supporting_sources": ["esc_2020_01h", "esc_2015_nsteacs"],
+      "strength_rank": 1,
+      "what_this_supports": "Rapid rule-in for troponin-based assessment",
+      "what_this_cannot_establish": "AMI diagnosis without additional ischemia evidence",
+      "conditions": [
+        {"marker": "cardiac_troponin", "comparison": ">=", "reference": "assay_specific_rule_in_cutoff", "requires_serial": true, "serial_timeframe_hours": 1.0}
+      ],
+      "condition_tree": {
+        "type": "AND",
+        "children": [
+          {"type": "CONDITION", "check": "TROPONIN_ABOVE_99TH", "evidence_type": "troponin"},
+          {"type": "CONDITION", "check": "SERIAL_RISE_FALL", "evidence_type": "troponin", "params": {"min_relative_change": 0.20}}
+        ]
+      }
+    }
+  ]
+}

@@ -28,6 +28,8 @@ STATE_DESCRIPTIONS = {
     EvidenceState.QUESTIONABLE: "The quality of the available evidence is questionable and may not support a reliable conclusion.",
     EvidenceState.ADDITIONAL_INFORMATION_REQUIRED: "Specific additional information is required before a conclusion can be reached.",
     EvidenceState.NO_RELIABLE_CONCLUSION: "No reliable conclusion can be reached from the available evidence. Human escalation is recommended.",
+    EvidenceState.WEAKER_CLAIM_ONLY: "Available evidence supports only a weaker claim and cannot support the primary diagnosis.",
+    EvidenceState.RULE_NOT_AVAILABLE: "No validated clinical rule or guideline entry is available in the medical knowledge base for this clinical scenario.",
 }
 
 
